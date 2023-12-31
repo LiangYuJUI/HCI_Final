@@ -35,7 +35,17 @@ while cap.isOpened():
         frame = cv2.flip(frame, 1)
         results = pose.process(RGB)
 
-        print(results.pose_landmarks)
+        #print(type(results.pose_landmarks))
+        # 在主迴圈中的適當位置取得landmark值
+        for landmark_id, landmark in enumerate(results.pose_landmarks.landmark):
+            # 取得X、Y、Z坐標
+            landmark_x = landmark.x
+            landmark_y = landmark.y
+            landmark_z = landmark.z
+    
+            # 打印或使用這些坐標值
+            print(f"Landmark {landmark_id}: X={landmark_x}, Y={landmark_y}, Z={landmark_z}")
+
         my_mp_drawing.draw_landmarks(
             frame, results.pose_landmarks, my_mp_pose.POSE_CONNECTIONS)
         
