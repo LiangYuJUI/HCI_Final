@@ -1,7 +1,13 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-import pyautogui
+#import pyautogui
+import json
+
+with open('weight.json', 'r') as file:
+    weight = json.load(file)
+
+different_list = []
 
 my_mp_drawing = mp.solutions.drawing_utils
 my_mp_pose = mp.solutions.pose
@@ -21,15 +27,19 @@ image_pose = image_mp_pose.Pose(
 # cv2相機模組
 cap = cv2.VideoCapture(0)
 
+# cv2讀取範例影片
+video_path = './example.mp4'
+image_cap = cv2.VideoCapture(video_path)
+
 # cv2讀取範例圖片
-image_path = 'C:/Users/user/Desktop/HCI/1.jpg'
-image_frame = cv2.imread(image_path)
-print(image_frame)
+# image_path = './1.jpg'
+# image_frame = cv2.imread(image_path)
+
 # cv2.namedWindow('Output', cv2.WINDOW_NORMAL)
 # cv2.resizeWindow('Output', 1000, 600)
 
 # 獲取螢幕寬度和高度
-screen_width, screen_height = pyautogui.size()
+#screen_width, screen_height = pyautogui.size()
 
 #變數
 landmark_dic_x= dict()
@@ -60,7 +70,22 @@ def calculate(landmark_x, landmark_y, landmark_img_x, landmark_img_y):
     img_leftforearm= slopee(landmark_img_x[13], landmark_img_y[13], landmark_img_x[15], landmark_img_y[15])
     img_rightforearm= slopee(landmark_img_x[14], landmark_img_y[14], landmark_img_x[16], landmark_img_y[16])
     
-    
+    # 誤差值
+    leftarm_error = error(leftarm, img_leftarm)
+    rightarm_error = error(rightarm, img_rightarm)
+    leftthigh_error = error(leftthigh, img_leftthigh)
+    rightthigh_error = error(rightthigh, img_rightthigh)
+    leftforearm_error = error(leftforearm, img_leftforearm)
+    rightforearm_error = error(rightforearm, img_rightforearm)
+
+    difference = (leftarm_error * weight["leftarm"]) + (rightarm_error * weight["rightarm"]) + (leftthigh_error * weight["leftthigh"]) + (rightthigh_error * weight["rightthigh"]) + (leftforearm_error * weight["leftforearm"]) + (rightforearm_error * weight["rightforearm"])
+    #print(type(difference))
+    if difference < 50 and difference > 0:
+        different_list.append(difference)
+    else:
+        different_list.append(0)
+
+    # 計算精準是否 與 誤差值
     if(camera_exceed(landmark_img_x[11], landmark_img_y[11], landmark_img_x[13], landmark_img_y[13])):
         if(not (approx(leftarm, img_leftarm) and camera_exceed(landmark_x[11], landmark_y[11], landmark_x[13], landmark_y[13]))):
             pose_flag['leftarm']= False
@@ -85,6 +110,10 @@ def calculate(landmark_x, landmark_y, landmark_img_x, landmark_img_y):
         if(not (approx(rightthigh, img_rightthigh) and camera_exceed(landmark_x[24], landmark_y[24], landmark_x[26], landmark_y[26]))):
             pose_flag['rightthigh']= False
  
+#計算誤差值
+def error(x, y):
+    return abs(x-y)
+
 #計算接近值
 def approx(x, y):
     if(abs(x-y)> 3):
@@ -109,13 +138,15 @@ def slopee(x1, y1, x2, y2):
     return x
 
 #Main function
-while cap.isOpened():
+while cap.isOpened() and image_cap.isOpened():
     ret, frame = cap.read()
+    image_ret, image_frame = image_cap.read()
 
     try:
         RGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame = cv2.flip(frame, 1)
         results = pose.process(RGB)
+
         image_RGB = cv2.cvtColor(image_frame, cv2.COLOR_BGR2RGB)
         image_results = image_pose.process(image_RGB)
 
@@ -133,11 +164,52 @@ while cap.isOpened():
             landmark_img_y[landmark_id]= landmark.y
         
         calculate(landmark_dic_x, landmark_dic_y, landmark_img_x, landmark_img_y)
+        if results.pose_landmarks:
+            for landmark in results.pose_landmarks.landmark:
+                landmark.x = 1 - landmark.x
         
         my_mp_drawing.draw_landmarks(
             frame, results.pose_landmarks, my_mp_pose.POSE_CONNECTIONS)
         image_mp_drawing.draw_landmarks(
             image_frame, image_results.pose_landmarks, image_mp_pose.POSE_CONNECTIONS)
+        
+        # 在背景上顯示文字 or 動作評判顯示
+        if(pose_flag['leftarm']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_SHOULDER,my_mp_pose.PoseLandmark.RIGHT_ELBOW)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_SHOULDER,my_mp_pose.PoseLandmark.RIGHT_ELBOW)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
+        if(pose_flag['rightarm']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.LEFT_SHOULDER,my_mp_pose.PoseLandmark.LEFT_ELBOW)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.LEFT_SHOULDER,my_mp_pose.PoseLandmark.LEFT_ELBOW)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
+        if(pose_flag['leftthigh']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_HIP,my_mp_pose.PoseLandmark.RIGHT_KNEE)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_HIP,my_mp_pose.PoseLandmark.RIGHT_KNEE)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
+        if(pose_flag['rightthigh']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.LEFT_HIP,my_mp_pose.PoseLandmark.LEFT_KNEE)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.LEFT_HIP,my_mp_pose.PoseLandmark.LEFT_KNEE)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
+        if(pose_flag['leftforearm']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_ELBOW,my_mp_pose.PoseLandmark.RIGHT_WRIST)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_ELBOW,my_mp_pose.PoseLandmark.RIGHT_WRIST)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
+        if(pose_flag['rightforearm']):
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.LEFT_ELBOW,my_mp_pose.PoseLandmark.LEFT_WRIST)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=6))
+        else:
+            my_mp_drawing.draw_landmarks(
+                frame, results.pose_landmarks, [(my_mp_pose.PoseLandmark.RIGHT_ELBOW,my_mp_pose.PoseLandmark.RIGHT_WRIST)], connection_drawing_spec=my_mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=6))
        
         if frame.shape[0] != image_frame.shape[0]:
             image_frame = cv2.resize(image_frame, (frame.shape[1], frame.shape[0]))
@@ -148,31 +220,6 @@ while cap.isOpened():
         # 將 combined_image 貼在畫布上
         black_canvas[0:0+combined_image.shape[0], 0:0+combined_image.shape[1]] = combined_image
         
-        # 在背景上顯示文字 or 動作評判顯示
-        if(pose_flag['leftarm']):
-            cv2.putText(black_canvas, 'left arm: Success', (50, 550), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'right arm: Fail', (50, 550), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        if(pose_flag['rightarm']):
-            cv2.putText(black_canvas, 'right arm: Success', (450, 550), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'left arm: Fail', (450, 550), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        if(pose_flag['leftthigh']):
-            cv2.putText(black_canvas, 'left thigh: Success', (50, 650), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'left thigh: Fail', (50, 650), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        if(pose_flag['rightthigh']):
-            cv2.putText(black_canvas, 'right thigh: Success', (450, 650), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'right thigh: Fail', (450, 650), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        if(pose_flag['leftforearm']):
-            cv2.putText(black_canvas, 'left forearm: Success', (50, 750), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'left forearm: Fail', (50, 750), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
-        if(pose_flag['rightforearm']):
-            cv2.putText(black_canvas, 'right forearm: Success', (450, 750), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
-        else:
-            cv2.putText(black_canvas, 'right forearm: Fail', (450, 750), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
         
         #若全對，則動作通過
         tmp = all(val for key, val in pose_flag.items())
@@ -182,6 +229,7 @@ while cap.isOpened():
             cv2.putText(black_canvas, 'POSTURE UNPASS ><', (900, 800), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 128, 255), 2, cv2.LINE_AA)
         
         cv2.imshow('Output', black_canvas)
+        #cv2.imshow('Output', np.hstack((frame, image_frame)))
     except:
         break
         
@@ -191,3 +239,4 @@ while cap.isOpened():
 
 cap.release()
 cv2.destroyAllWindows()
+print(sum(different_list)/len(different_list))
